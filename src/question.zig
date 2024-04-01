@@ -1,48 +1,42 @@
 const std = @import("std");
 var allocator = std.heap.GeneralPurposeAllocator(.{}){};
 const Label = []u8;
+const Buffer = @import("buffer.zig").Buffer;
+const string = @import("string.zig");
 
 const ArrayList = std.ArrayList;
 
 pub const DnsQuestion = struct {
-    labels: ArrayList(Label),
+    cname: string.String,
     QType: QType,
     QClass: QClass,
 
-    pub fn from_bytes(bytes: []u8) !struct { packet: DnsQuestion, end: u16 } {
-        var start: u16 = 0;
-        var labels = ArrayList(Label).init(allocator.allocator());
+    pub fn from_bytes(bytes: *Buffer) !DnsQuestion {
+        const cname = try string.string_from_bytes(bytes);
 
-        while (true) {
-            const len = bytes[start];
+        const q_type = bytes.read_u16();
+        _ = bytes.read_u16(); // q_class
 
-            if (len == 0) {
-                start = start + 1;
-                break;
-            }
-            const end = start + len + 1;
-            // std.debug.print("label-len: {d}\n", .{len});
-            // std.debug.print("label: {s}\n", .{bytes[start..end]});
-
-            try labels.append(bytes[start..end]);
-            start = start + len + 1;
-        }
-
-        const q_type = std.mem.readIntSliceBig(u16, bytes[start .. start + 2]);
-        start = start + 2;
-        // const q_class = std.mem.readIntSliceBig(u16, bytes[start..start + 2]);
-
-        std.debug.print("{s}\n", .{labels.items});
-
-        return .{ .packet = DnsQuestion{
-            .labels = labels,
+        return DnsQuestion{
+            .cname = cname,
             .QType = QType.from_bytes(q_type),
             .QClass = QClass.InternetAdress,
-        }, .end = start };
+        };
+    }
+    pub fn all_from_bytes(count: u16, bytes: *Buffer) !ArrayList(DnsQuestion) {
+        var questions = ArrayList(DnsQuestion).init(allocator.allocator());
+        var i: u16 = 0;
+        while (i < count) {
+            i = i + 1;
+
+            const question = try DnsQuestion.from_bytes(bytes);
+            try questions.append(question);
+        }
+        return questions;
     }
 };
 
-const QType = enum {
+pub const QType = enum {
     Reserved,
     A,
     NS,
@@ -52,7 +46,7 @@ const QType = enum {
     SOA,
     Unimplemented,
 
-    fn from_bytes(bytes: u16) QType {
+    pub fn from_bytes(bytes: u16) QType {
         switch (bytes) {
             0 => return QType.Reserved,
             1 => return QType.A,
@@ -64,4 +58,4 @@ const QType = enum {
     }
 };
 
-const QClass = enum { InternetAdress };
+pub const QClass = enum { InternetAdress };

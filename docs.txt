@@ -32,4 +32,8 @@ Authorative name server:
 8421
 1111
 
+10101010
+00 1 1 1 1 1 1
+   32  16 8 4 2 1
+
 https://mislove.org/teaching/cs4700/spring11/handouts/project1-primer.pdf
