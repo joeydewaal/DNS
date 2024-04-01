@@ -1,0 +1,35 @@
+SOA: Start Of Authority
+IP adresses: A of AAAA
+SMTP: MX
+name servers: NS
+Reverse DNS lookup: PTR
+Domain name Aliases: CNAME
+
+domain max 127 levels deep
+label: max 63 charakters
+    empty label reserved for root zone
+
+domain name:
+    total length = 253
+    ascii charakters LDH (Letters, Digits, Hyphen)
+    case independant
+    May not start or end with Hypen
+
+Authorative name server:
+    Geeft alleen antwoord op queries die hij zelf heeft
+    Domein namen zijn manueel ingesteld
+    Geeft geen queries terug die dynamisch zijn opgehaald (via een andere name server)
+
+    Master/Slave principe
+    Master:
+        Heeft de originele domein namen
+    Slave:
+        Gebruikt speciaal protocol om in sync te zijn met master
+
+1010101010101010
+ 0101
+            0101
+8421
+1111
+
+https://mislove.org/teaching/cs4700/spring11/handouts/project1-primer.pdf
