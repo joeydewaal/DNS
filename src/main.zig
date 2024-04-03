@@ -2,9 +2,11 @@ const std = @import("std");
 const os = @import("std").os;
 const DnsPacket = @import("packet.zig").DnsPacket;
 const Buffer = @import("buffer.zig").Buffer;
+const MAX_BUFF = @import("buffer.zig").MAX_BUFF;
 
-const upstream = "1.1.1.1";
+// const upstream = "1.1.1.1";
 // const upstream = "192.168.0.29";
+const upstream = "198.41.0.4";
 
 pub fn main() !void {
     const addr = try std.net.Address.parseIp("127.0.0.1", 53);
@@ -16,11 +18,23 @@ pub fn main() !void {
     var cliaddrlen: std.os.socklen_t = @sizeOf(os.linux.sockaddr);
     while (true) {
 
-        // client uitlezen
-        var buf: [1024]u8 = undefined;
-        const len = try os.recvfrom(sock, buf[0..], 0, &cliaddr, &cliaddrlen);
+        // nieuwe buffer maken voor binnenkomende request
+        var client_buff = Buffer.new_empty();
+        //
+        // buffer vullen met request
+        const len = try os.recvfrom(sock, client_buff.slice_to_end(), 0, &cliaddr, &cliaddrlen);
+        _ = len;
 
+        // dns pakket maken van buffer
+        const client_packet = try DnsPacket.from_bytes(&client_buff);
+        defer client_packet.deinit();
 
+        // debug: pakket uitprinten
+        std.debug.print("---------client\n", .{});
+        client_packet.print();
+        std.debug.print("---------client\n", .{});
+
+        // upstream connectie maken
         const upstream_socket = try os.socket(os.AF.INET, os.SOCK.DGRAM | os.SOCK.CLOEXEC, 0);
         defer os.closeSocket(upstream_socket);
 
@@ -29,38 +43,20 @@ pub fn main() !void {
         try os.connect(upstream_socket, &upstream_addr.any, addr.getOsSockLen());
 
         // client req doorsturen naar upstream
-        const send_bytes = try os.send(upstream_socket, buf[0..len], 0);
+        const send_bytes = try os.send(upstream_socket, client_packet.to_buffer().slice_from_start(), 0);
         _ = send_bytes;
 
         // std.debug.print("sent up:{d}\n", .{send_bytes});
 
-        var upstream_buf: [1024]u8 = undefined;
-        const upstream_len = try os.recv(upstream_socket, upstream_buf[0..], 0);
-        // std.debug.print("recv up:{d}\n", .{upstream_len});
-
-
-
-        const client_sent = try os.sendto(sock, upstream_buf[0..upstream_len], 0, &cliaddr, cliaddrlen);
+        // upstream antwoord opvangen
+        var upstream_buf = Buffer.new_empty();
+        const upstream_len = try os.recv(upstream_socket, upstream_buf.slice_to_end(), 0);
+        _ = upstream_len;
+        const uppstream_packet = try DnsPacket.from_bytes(&upstream_buf);
+        std.debug.print("---------upstream\n", .{});
+        uppstream_packet.print();
+        std.debug.print("---------upstream\n", .{});
+        const client_sent = try os.sendto(sock, uppstream_packet.to_buffer().slice_from_start(), 0, &cliaddr, cliaddrlen);
         _ = client_sent;
-
-        var buffer = Buffer.from_bytes(upstream_buf[0..upstream_len]);
-        // std.debug.print("client up: {d}\n", .{client_sent});
-        const packet = try DnsPacket.from_bytes(&buffer);
-        _ = packet;
-
-        // std.debug.print("{any}\n", .{packet});
-
-        // write_to_disk(upstream_buf[0..upstream_len]) catch @panic("whoops");
-        break;
     }
-}
-
-fn write_to_disk(buf: []u8) !void {
-    const file = try std.fs.cwd().createFile(
-        "example_resp.txt",
-        .{ .read = true },
-    );
-    defer file.close();
-    const bytes_read = try file.writeAll(buf);
-    _ = bytes_read;
 }

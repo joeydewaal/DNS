@@ -27,7 +27,8 @@ Authorative name server:
         Gebruikt speciaal protocol om in sync te zijn met master
 
 1010101010101010
- 0101
+            1111
+               1
             0101
 8421
 1111
