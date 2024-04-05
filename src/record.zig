@@ -21,38 +21,37 @@ pub const Record = struct {
 
         while (i < aantal) {
             i = i + 1;
-            std.debug.print("RECORD : read str\n", .{});
             const name = try string.string_from_bytes(bytes);
-
             const dns_type = QType.from_bytes(bytes.read_u16());
-            std.debug.print("TYPE: {}\n", .{dns_type});
             const class = QClass.from_byte(bytes.read_u16());
-            std.debug.print("CLASS: {}\n", .{class});
             const ttl = bytes.read_u32();
             const r_data = try Data.from_bytes(bytes, dns_type);
 
-            const record = Record{
+            try records.append(Record{
                 .name = name,
                 .type = dns_type,
                 .class = class,
                 .ttl = ttl,
                 .r_data = r_data,
-            };
-            record.print();
-            std.debug.print("\n", .{});
-            try records.append(record);
+            });
         }
         return records;
     }
 
     pub fn print(self: *const Record) void {
-        std.debug.print("NAME:\t{s}\n", .{self.name.items});
-        std.debug.print("TYPE:\t{}\n", .{self.type});
-        std.debug.print("TTL:\t{d}s\n", .{self.ttl});
+        std.debug.print("NAME: {s}\t", .{self.name.items});
+        std.debug.print("TYPE: {}\t", .{self.type});
+        std.debug.print("TTL: {d}s\t", .{self.ttl});
         self.r_data.print();
     }
 
     pub fn write_buffer(self: *const Record, buffer: *Buffer) void {
+        if (self.type == QType.Unsupported) {
+            return;
+        }
+        if (self.class == QClass.NotSupported) {
+            return;
+        }
         string.write_to_buf(&self.name, buffer);
         buffer.write_u16_to_big(self.type.to_bytes());
         buffer.write_u16_to_big(self.class.to_bytes());
@@ -67,7 +66,6 @@ pub const Data = struct {
 
     fn from_bytes(bytes: *Buffer, data_type: QType) !Data {
         const len = bytes.read_u16();
-        // std.debug.print("r data len: {d}\n", .{len});
         switch (data_type) {
             QType.A => {
                 const o1 = bytes.read_u8();
@@ -77,8 +75,10 @@ pub const Data = struct {
                 return Data{ .len = len, .data = DataInner{ .A = [4]u8{ o1, o2, o3, o4 } } };
             },
             QType.NS => {
-                std.debug.print("NS name\n", .{});
+                // idk waarom dit zo moet ma het werkt
+                const index = bytes.index;
                 const name = try string.string_from_bytes(bytes);
+                bytes.set_ptr(index + len);
                 return Data{ .len = len, .data = DataInner{ .NS = name } };
             },
             QType.CNAME => {
@@ -132,17 +132,52 @@ pub const Data = struct {
     }
 
     pub fn write_buffer(self: *const Data, buffer: *Buffer) void {
-        buffer.write_u16_to_big(self.len);
-
         switch (self.data) {
             DataInner.A => |ipv4| {
+                buffer.write_u16_to_big(4);
                 buffer.write_slice(&ipv4);
             },
+            DataInner.NS => |ns| {
+                var strlen = string.strlen(&ns);
+                buffer.write_u16_to_big(strlen);
+                string.write_to_buf(&ns, buffer);
+            },
+            DataInner.CNAME => |cname| {
+                var strlen = string.strlen(&cname);
+                buffer.write_u16_to_big(strlen);
+                string.write_to_buf(&cname, buffer);
+            },
+            DataInner.SOA => |soa| {
+                const strlen1 = string.strlen(&soa.mname);
+                const strlen2 = string.strlen(&soa.rname);
+
+                buffer.write_u16_to_big(strlen1 + strlen2 + 16);
+
+                string.write_to_buf(&soa.mname, buffer);
+                string.write_to_buf(&soa.rname, buffer);
+
+                buffer.write_u32_to_big(soa.serial);
+                buffer.write_u32_to_big(soa.refresh);
+                buffer.write_u32_to_big(soa.retry);
+                buffer.write_u32_to_big(soa.expire);
+            },
+            DataInner.PTR => |ptr| {
+                const strlen = string.strlen(&ptr);
+                buffer.write_u16_to_big(strlen);
+                string.write_to_buf(&ptr, buffer);
+            },
+            DataInner.MX => |mx| {
+                const strlen = string.strlen(&mx.exchange);
+                buffer.write_u16_to_big(strlen + 2);
+
+                buffer.write_u16_to_big(mx.preference);
+                string.write_to_buf(&mx.exchange, buffer);
+            },
             DataInner.AAAA => |ipv6| {
+                buffer.write_u16_to_big(16);
                 buffer.write_slice_u16(&ipv6);
             },
             else => {
-                std.debug.print("len: {d}\n", .{self.len});
                 buffer.move_ptr(self.len);
             },
         }
@@ -172,7 +207,7 @@ pub const DataInner = union(QType) {
     pub fn print(self: DataInner) void {
         switch (self) {
             DataInner.A => |ip| {
-                std.debug.print("ipv4:\t{d}.{d}.{d}.{d}\n", .{ ip[0], ip[1], ip[2], ip[3] });
+                std.debug.print("ipv4: {d}.{d}.{d}.{d}\n", .{ ip[0], ip[1], ip[2], ip[3] });
             },
             DataInner.NS => |ns| {
                 std.debug.print("NS: {s}\n", .{ns.items});
@@ -196,7 +231,7 @@ pub const DataInner = union(QType) {
                 std.debug.print("\t\tpreference: {d}\n", .{mx.preference});
             },
             DataInner.AAAA => |ip| {
-                std.debug.print("ipv6:\t{x:0>2}:{x:0>2}:{x:0>2}:{x:0>2}:{x:0>2}:{x:0>2}:{x:0>2}::{x:0>2}\n", .{ ip[0], ip[1], ip[2], ip[3], ip[4], ip[5], ip[6], ip[7] });
+                std.debug.print("ipv6: {x:0>2}:{x:0>2}:{x:0>2}:{x:0>2}:{x:0>2}:{x:0>2}:{x:0>2}::{x:0>2}\n", .{ ip[0], ip[1], ip[2], ip[3], ip[4], ip[5], ip[6], ip[7] });
             },
             else => |_| std.debug.print("UNSSUPORTED QTYPE\n", .{}),
         }

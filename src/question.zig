@@ -12,15 +12,7 @@ pub const DnsQuestion = struct {
     QClass: QClass,
 
     pub fn from_bytes(bytes: *Buffer) !DnsQuestion {
-        std.debug.print("DNSQ : read string\n", .{});
         const cname = try string.string_from_bytes(bytes);
-            var index: u16 = 0;
-            for (bytes.buffer) |b| {
-                std.debug.print("i: {d} v:{x}\n", .{index,b});
-                index = index + 1;
-            }
-            std.debug.print("\n", .{});
-
         const q_type = QType.from_bytes(bytes.read_u16());
         const class = QClass.from_byte(bytes.read_u16());
 
@@ -43,11 +35,13 @@ pub const DnsQuestion = struct {
     }
 
     pub fn print(self: *const DnsQuestion) void {
-        std.debug.print("CNAME:\t{s}\n", .{self.cname.items});
-        std.debug.print("QTYPE:\t{}\n", .{self.QType});
+        std.debug.print("CNAME: {s}\t", .{self.cname.items});
+        std.debug.print("QTYPE: {}\n", .{self.QType});
     }
 
     pub fn write_buffer(self: DnsQuestion, buffer: *Buffer) void {
+        if (self.QType == QType.Unsupported) { return; }
+        if (self.QClass == QClass.NotSupported) { return; }
         string.write_to_buf(&self.cname, buffer);
         buffer.write_u16_to_big(self.QType.to_bytes());
         buffer.write_u16_to_big(self.QClass.to_bytes());
@@ -65,12 +59,29 @@ pub const QType = enum(u16) {
     Unsupported = 0,
 
     pub fn from_bytes(bytes: u16) QType {
-        std.debug.print("QTYPE: {d}\n", .{bytes});
-        return @enumFromInt(bytes);
+        return switch (bytes) {
+            1 => QType.A,
+            2 => QType.NS,
+            5 => QType.CNAME,
+            6 => QType.SOA,
+            12 => QType.PTR,
+            15 => QType.MX,
+            28 => QType.AAAA,
+            else => QType.Unsupported,
+        };
     }
 
     pub fn to_bytes(self: QType) u16 {
-        return @intFromEnum(self);
+        return switch (self) {
+            QType.A => 1,
+            QType.NS => 2,
+            QType.CNAME => 5,
+            QType.SOA => 6,
+            QType.PTR => 12,
+            QType.MX => 15,
+            QType.AAAA => 28,
+            else => 0
+        };
     }
 };
 

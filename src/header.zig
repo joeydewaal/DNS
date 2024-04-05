@@ -4,6 +4,9 @@ var allocator = std.heap.GeneralPurposeAllocator(.{}){};
 const ArrayList = std.ArrayList;
 const Record = @import("record.zig").Record;
 const Buffer = @import("buffer.zig").Buffer;
+const DnsPacket = @import("packet.zig").DnsPacket;
+const QType = @import("question.zig").QType;
+const QClass = @import("question.zig").QClass;
 
 const HeaderInner = packed struct(u16) {
     qr: u1,
@@ -16,8 +19,6 @@ const HeaderInner = packed struct(u16) {
     RCODE: u4,
 
     fn from_bytes(bytes: u16) HeaderInner {
-        // const header: HeaderInner = @bitCast(std.mem.nativeToBig(u16, bytes));
-        std.debug.print("HEADER: {b:0>16}\n", .{bytes});
         return HeaderInner{
             .qr = @intCast((bytes >> 15) & 1),
             .op_code = @intCast((bytes >> 11) & 15),
@@ -27,30 +28,44 @@ const HeaderInner = packed struct(u16) {
             .RA = @intCast((bytes >> 7) & 1),
             .RCODE = @intCast((bytes & 15))
         };
-
-        // return header;
     }
 
     pub inline fn write_buffer(self: *const HeaderInner, buffer: *Buffer) void {
-        const header: u16 = std.mem.readIntBig(u16, std.mem.asBytes(self));
-        buffer.write_u16(header);
+        // const header: u16 = std.mem.readIntBig(u16, std.mem.asBytes(self));
+
+        var bytes: u16 = 0;
+        const qr: u16 = @intCast(self.qr);
+        bytes = bytes | qr << 15;
+
+        const op_code:u16 = @intCast(self.op_code);
+        bytes = bytes | op_code << 11;
+
+        const AA:u16 = @intCast(self.AA);
+        bytes = bytes | AA << 10;
+
+        const TC:u16 = @intCast(self.TC);
+        bytes = bytes | TC << 9;
+
+        const RD:u16 = @intCast(self.RD);
+        bytes = bytes | RD << 8;
+
+        const RA:u16 = @intCast(self.RA);
+        bytes = bytes | RA << 7;
+
+        bytes = bytes | self.RCODE;
+        buffer.write_u16_to_big(bytes);
     }
 };
 
 pub const Header = struct {
     id: u16,
-
     header_inner: HeaderInner,
-
     /// aantal vragen
     qd_count: u16,
-
     /// aantal resource records
     an_count: u16,
-
     /// aantal name server records
     ns_count: u16,
-
     /// aantal additional records
     ar_count: u16,
 
@@ -88,12 +103,17 @@ pub const Header = struct {
     pub inline fn recursion_desired(self: Header) bool {
         return self.header_inner.RD == 1;
     }
+    pub inline fn set_recursion_desired( self: * Header , is_desired: bool) void {
+        self.header_inner.RD = @intFromBool(is_desired);
+    }
+
     pub inline fn recursion_available(self: Header) bool {
         return self.header_inner.RA == 1;
     }
     pub inline fn get_rcode(self: Header) RCODE {
         return RCODE.from_byte(@intCast(self.header_inner.RCODE));
     }
+
 
     pub fn write_buffer(self: *const  Header, buffer: *Buffer) void {
         buffer.write_u16_to_big(self.id);
@@ -107,7 +127,7 @@ pub const Header = struct {
     pub fn print(self: *const Header) void {
         std.debug.print("ID: {d}\t", .{self.id});
         std.debug.print("QR: {}\t", .{self.is_query()});
-        std.debug.print("OP CODE: {}\n", .{self.get_op_code()});
+        std.debug.print("OP CODE: {}\t", .{self.get_op_code()});
 
         std.debug.print("AA: {}\t", .{self.is_authoritive_answer()});
         std.debug.print("TC: {}\t", .{self.is_truncated()});
@@ -117,7 +137,7 @@ pub const Header = struct {
         std.debug.print("Q count: {d}\t", .{self.qd_count});
         std.debug.print("AN count: {d}\t", .{self.an_count});
         std.debug.print("N count: {d}\t", .{self.ns_count});
-        std.debug.print("AR count: {d}\n", .{self.ar_count});
+        std.debug.print("AR count: {d}\t", .{self.ar_count});
         std.debug.print("RCODE: {}\n", .{self.get_rcode()});
     }
 };

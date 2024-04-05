@@ -1,4 +1,4 @@
-pub const MAX_BUFF = 512;
+pub const MAX_BUFF = 1024;
 const std = @import("std");
 
 pub const Buffer = struct {
